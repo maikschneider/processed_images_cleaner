@@ -10,6 +10,7 @@ use Psr\Log\LoggerInterface;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
+use TYPO3\CMS\Core\Resource\FileType;
 use TYPO3\CMS\Core\Resource\ProcessedFileRepository;
 
 /**
@@ -90,21 +91,20 @@ final readonly class ProcessedFileCleanupService
             ->from(self::TABLE, 'p')
             ->orderBy('p.uid');
 
-        $conditions = [];
+        $queryBuilder->join(
+            'p',
+            'sys_file',
+            'f',
+            $expr->eq('f.uid', $queryBuilder->quoteIdentifier('p.original'))
+        );
 
-        $needsOriginalJoin = $demand->storage !== null
-            || $demand->folder !== null
-            || $demand->identifiers !== [];
-        if ($needsOriginalJoin) {
-            $queryBuilder->join(
-                'p',
-                'sys_file',
-                'f',
-                $expr->eq('f.uid', $queryBuilder->quoteIdentifier('p.original'))
-            );
-            
-            // @todo: Make sure to only select image files (field: extension)
-        }
+        $conditions = [
+            // Only process files whose original is an image (skip text, audio, video, …).
+            $expr->eq(
+                'f.type',
+                $queryBuilder->createNamedParameter(FileType::IMAGE->value, Connection::PARAM_INT)
+            ),
+        ];
 
         if ($demand->storage !== null) {
             $conditions[] = $expr->eq(
@@ -137,9 +137,7 @@ final readonly class ProcessedFileCleanupService
             );
         }
 
-        if ($conditions !== []) {
-            $queryBuilder->where(...$conditions);
-        }
+        $queryBuilder->where(...$conditions);
 
         return $queryBuilder;
     }
