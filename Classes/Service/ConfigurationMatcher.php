@@ -28,21 +28,19 @@ namespace Derhansen\ProcessedImagesCleaner\Service;
  */
 final class ConfigurationMatcher
 {
-    /**
-     * @param array<string, mixed> $configuration Unserialized configuration array
-     * @param array<string, string> $filters key => expected value pairs (all must match)
-     * @param string|null $cropVariant Crop variant name that must be present, or null
-     */
-    public function matches(array $configuration, array $filters, ?string $cropVariant): bool
+    public function matches(array $configuration, array $filters): bool
     {
         foreach ($filters as $key => $expected) {
+            if ($key === 'cropVariant') {
+                if (!$this->hasCropVariant($configuration['crop'] ?? null, $expected)) {
+                    return false;
+                }
+                continue;
+            }
+
             if (!$this->keyMatches($configuration, $key, $expected)) {
                 return false;
             }
-        }
-
-        if ($cropVariant !== null && !$this->hasCropVariant($configuration['crop'] ?? null, $cropVariant)) {
-            return false;
         }
 
         return true;

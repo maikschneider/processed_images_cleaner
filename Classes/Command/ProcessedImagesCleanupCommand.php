@@ -33,7 +33,8 @@ final class ProcessedImagesCleanupCommand extends Command
             ->addOption('storage', 's', InputOption::VALUE_OPTIONAL, 'Storage UID of the original files')
             ->addOption('folder', 'f', InputOption::VALUE_OPTIONAL, 'Folder identifier within the storage, e.g. "user_upload/"')
             ->addOption('file-uid', 'u', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'UID of an original sys_file (repeatable)')
-            ->addOption('identifier', 'i', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Full original file identifier incl. path, e.g. "/user_upload/foo/bar/image.jpg" (repeatable)');
+            ->addOption('identifier', 'i', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Full original file identifier incl. path, e.g. "/user_upload/foo/bar/image.jpg" (repeatable)')
+            ->addOption('config', 'c', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Configuration equality filter "key=value" (repeatable), e.g. -c width=1000 -c maxWidth=1800 -c cropVariant=default. Numeric values also match TypoScript modifiers ("800" matches "800m"); use "key=null" for unset values.');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -48,8 +49,8 @@ final class ProcessedImagesCleanupCommand extends Command
             return Command::INVALID;
         }
 
-        if (!$demand->hasFileFilter()) {
-            $io->error('Refusing to run without any file filter.');
+        if (!$demand->hasFileFilter() && !$demand->hasConfigurationFilter()) {
+            $io->error('Refusing to run without any filter. Provide at least one file filter (--storage, --folder, --file-uid, --identifier) or a configuration filter (--config).');
             return Command::INVALID;
         }
 
@@ -69,14 +70,14 @@ final class ProcessedImagesCleanupCommand extends Command
         $deleted = 0;
         $failed = 0;
         foreach ($matches as $row) {
-            $io->writeln('Test: ' . $row['identifier'] . ' - ' . $row['uid']);
+            $io->writeln(sprintf('Deleting processed file "%s" [uid: %d]', $row['identifier'], $row['uid']));
 
             if ($dryRun) {
                 continue;
             }
 
             try {
-                //$this->cleanupService->delete((int)$row['uid']);
+                $this->cleanupService->delete((int)$row['uid']);
                 $deleted++;
             } catch (\Throwable $e) {
                 $failed++;
@@ -106,8 +107,31 @@ final class ProcessedImagesCleanupCommand extends Command
             $this->intOption($input, 'storage'),
             $this->stringOption($input, 'folder'),
             $this->intListOption($input, 'file-uid'),
-            $input->getOption('identifier')
+            $input->getOption('identifier'),
+            $this->parseConfig($input->getOption('config')),
         );
+    }
+
+    /**
+     * @param string[] $pairs
+     * @return array<string, string>
+     */
+    private function parseConfig(array $pairs): array
+    {
+        $configuration = [];
+        foreach ($pairs as $pair) {
+            if (!str_contains($pair, '=')) {
+                throw new \InvalidArgumentException(sprintf('Invalid --config value "%s". Expected format "key=value".', $pair));
+            }
+            [$key, $value] = explode('=', $pair, 2);
+            $key = trim($key);
+            if ($key === '') {
+                throw new \InvalidArgumentException(sprintf('Invalid --config value "%s". The key must not be empty.', $pair));
+            }
+            $configuration[$key] = $value;
+        }
+
+        return $configuration;
     }
 
     private function intOption(InputInterface $input, string $name): ?int

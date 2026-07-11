@@ -11,6 +11,7 @@ final readonly class CleanupDemand
         public ?string $folder = null,
         public array $fileUids = [],
         public array $identifiers = [],
+        public array $configuration = [],
     ) {}
 
     public function hasFileFilter(): bool
@@ -21,4 +22,8 @@ final readonly class CleanupDemand
             || $this->identifiers !== [];
     }
 
+    public function hasConfigurationFilter(): bool
+    {
+        return $this->configuration !== [];
+    }
 }

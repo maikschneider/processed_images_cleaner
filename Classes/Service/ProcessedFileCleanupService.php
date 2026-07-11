@@ -28,14 +28,21 @@ final readonly class ProcessedFileCleanupService
     ) {}
 
     /**
-     * Streams all matching processed file rows. Configuration/crop-variant filters
-     * are evaluated per row after unserializing the configuration.
+     * Returns all matching processed file rows. Configuration/crop-variant filters are evaluated per row after
+     * unserializing the configuration.
      */
     public function findDemanded(CleanupDemand $criteria): array
     {
-        $result = $this->createQuery($criteria)->executeQuery()->fetchAllAssociative();
+        $rows = $this->createQuery($criteria)->executeQuery()->fetchAllAssociative();
 
-        return $result;
+        if (!$criteria->hasConfigurationFilter()) {
+            return $rows;
+        }
+
+        return array_values(array_filter(
+            $rows,
+            fn (array $row): bool => $this->configurationMatches($row, $criteria),
+        ));
     }
 
     public function delete(int $uid): void
@@ -43,12 +50,6 @@ final readonly class ProcessedFileCleanupService
         $processedFile = $this->processedFileRepository->findByUid($uid);
         $processedFile->getStorage()->setEvaluatePermissions(false);
         $processedFile->delete(true);
-
-        $this->connectionPool->getConnectionForTable(self::TABLE)->delete(
-            self::TABLE,
-            ['uid' => $uid],
-            ['uid' => Connection::PARAM_INT]
-        );
 
         $this->logger->info('Deleted processed file with uid {uid}', ['uid' => $uid]);
     }
@@ -63,7 +64,7 @@ final readonly class ProcessedFileCleanupService
             return false;
         }
 
-        return $this->configurationMatcher->matches($configuration, $criteria->configuration, $criteria->cropVariant);
+        return $this->configurationMatcher->matches($configuration, $criteria->configuration);
     }
 
     /**
@@ -74,8 +75,6 @@ final readonly class ProcessedFileCleanupService
         if ($configuration === '') {
             return null;
         }
-
-        // Read-only matching: never allow object instantiation from stored data.
         $data = @unserialize($configuration, ['allowed_classes' => false]);
 
         return is_array($data) ? $data : null;
@@ -99,11 +98,16 @@ final readonly class ProcessedFileCleanupService
         );
 
         $conditions = [
-            // Only process files whose original is an image (skip text, audio, video, …).
+            // Only process files whose original is an image
             $expr->eq(
                 'f.type',
                 $queryBuilder->createNamedParameter(FileType::IMAGE->value, Connection::PARAM_INT)
             ),
+            // Never touch "uses original file" placeholder rows. When TYPO3 decides no processing is
+            // needed it stores a row with an empty identifier (and no name) to cache that decision;
+            // no physical file exists, so there is nothing to clean up.
+            $expr->isNotNull('p.identifier'),
+            $expr->neq('p.identifier', $queryBuilder->createNamedParameter('')),
         ];
 
         if ($demand->storage !== null) {
