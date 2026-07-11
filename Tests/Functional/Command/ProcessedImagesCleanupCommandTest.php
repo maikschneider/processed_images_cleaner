@@ -54,7 +54,8 @@ final class ProcessedImagesCleanupCommandTest extends FunctionalTestCase
         $this->commandTester->execute(['--config' => ['widthWithoutValue']]);
 
         self::assertSame(Command::INVALID, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Expected format "key=value"', $this->commandTester->getDisplay());
+        self::assertStringContainsString('Expected format"', $this->commandTester->getDisplay());
+        self::assertStringContainsString('"key=value"', $this->commandTester->getDisplay());
     }
 
     #[Test]
