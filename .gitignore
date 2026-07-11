@@ -1,9 +1,1 @@
-# PHP Storm, other java IDE's
 .idea
-.Build/public
-.Build/vendor
-.Build/packages
-.Build/var/
-composer.lock
-.php-cs-fixer.cache
-.phpunit.cache
