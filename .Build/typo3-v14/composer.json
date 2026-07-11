@@ -1,0 +1,40 @@
+{
+	"name": "derhansen/processed-images-cleaner-build",
+	"description": "composer.json for builds",
+	"repositories": [
+		{
+			"type": "path",
+			"url": "../../"
+		}
+	],
+	"require": {
+		"derhansen/processed-images-cleaner": "@dev",
+		"typo3/cms-core": "^14.3",
+		"php": ">=8.2"
+	},
+	"require-dev": {
+		"typo3/cms-composer-installers": "^5.0",
+		"typo3/cms-backend": "^14.3",
+		"typo3/cms-fluid": "^14.3",
+		"typo3/cms-tstemplate": "^14.3",
+		"typo3/cms-extensionmanager": "^14.3",
+		"typo3/testing-framework": "^9.0",
+		"phpunit/phpunit": "^11.5.50",
+		"friendsofphp/php-cs-fixer": "^3.12.0",
+		"saschaegerer/phpstan-typo3": "^3.0",
+		"phpstan/extension-installer": "^1.1"
+	},
+	"config": {
+		"lock": false,
+		"allow-plugins": {
+			"typo3/class-alias-loader": true,
+			"typo3/cms-composer-installers": true,
+			"phpstan/extension-installer": true
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"DERHANSEN\\SfEventMgt\\Tests\\": "../Tests"
+		}
+	}
+}
