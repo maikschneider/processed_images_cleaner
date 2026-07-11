@@ -1,0 +1,44 @@
+name: Code Quality Checks
+
+on: [push, pull_request]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        typo3: [v13, v14]
+        php: [8.2, 8.3, 8.4]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up PHP Version
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer:v2
+
+      - name: Validate composer.json and composer.lock
+        run: composer validate
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.composer/cache
+          key: dependencies-composer-${{ hashFiles('composer.json') }}
+
+      - name: Install composer dependencies
+        run: |
+          cd .Build/${{ matrix.typo3 }}/
+          composer install --no-progress
+
+      - name: Validate PHP coding guidelines
+        run: |
+          .Build/${{ matrix.typo3 }}/vendor/bin/php-cs-fixer fix --config=.Build/php-cs-fixer/.php-cs-fixer.php -v --dry-run --stop-on-violation --using-cache=no
+
+      - name: Run phpstan checks
+        run: |
+          .Build/${{ matrix.typo3 }}/vendor/bin/phpstan --configuration=.Build/phpstan/phpstan.neon
