@@ -12,6 +12,8 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use TYPO3\CMS\Core\Resource\ProcessedFileRepository;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\MathUtility;
 
 #[AsCommand(
@@ -20,8 +22,11 @@ use TYPO3\CMS\Core\Utility\MathUtility;
 )]
 final class ProcessedImagesCleanupCommand extends Command
 {
+    private const FORMAT_LABELS = '|k|M|G|T|P|E|Z|Y';
+
     public function __construct(
         private readonly ProcessedFileCleanupService $cleanupService,
+        private ProcessedFileRepository $processedFileRepository,
     ) {
         parent::__construct();
     }
@@ -67,37 +72,43 @@ final class ProcessedImagesCleanupCommand extends Command
             return Command::SUCCESS;
         }
 
-        $deleted = 0;
-        $failed = 0;
+        $deletedFiles = 0;
+        $failedFiles = 0;
+        $totalBytes = 0;
         foreach ($matches as $row) {
-            $io->writeln(sprintf('Deleting processed file "%s" [uid: %d]', $row['identifier'], $row['uid']));
+            $processedFile = $this->processedFileRepository->findByUid((int)$row['uid']);
+            $processedFileSize = $processedFile->exists() ? $processedFile->getSize() : 0;
+            $totalBytes += $processedFileSize;
 
-            if ($dryRun) {
-                continue;
+            if (!$dryRun) {
+                try {
+                    $this->cleanupService->delete($processedFile);
+                    $deletedFiles++;
+                } catch (\Throwable $e) {
+                    $failedFiles++;
+                    $io->warning(sprintf('Could not delete processed file uid %d: %s', (int)$row['uid'], $e->getMessage()));
+                }
             }
 
-            try {
-                $this->cleanupService->delete((int)$row['uid']);
-                $deleted++;
-            } catch (\Throwable $e) {
-                $failed++;
-                $io->warning(sprintf('Could not delete processed file uid %d: %s', (int)$row['uid'], $e->getMessage()));
-            }
+            $io->writeln(
+                sprintf('Deleted processed file "%s" [uid: %d, size: %s]', $row['identifier'], $row['uid'],  GeneralUtility::formatSize($processedFileSize, self::FORMAT_LABELS))
+            );
         }
 
         $io->newLine();
 
+        $deletedBytes = GeneralUtility::formatSize($totalBytes, self::FORMAT_LABELS);
         if ($dryRun) {
-            $io->warning(sprintf('Dry-run: %d processed file(s) match.', $total));
+            $io->success(sprintf('Dry-run: %d processed file(s) match, %s would be freed.', $total, $deletedBytes));
             return Command::SUCCESS;
         }
 
-        if ($failed > 0) {
-            $io->warning(sprintf('Deleted %d processed file(s), %d failed. See log for details.', $deleted, $failed));
+        if ($failedFiles > 0) {
+            $io->warning(sprintf('Deleted %d processed file(s) (%s freed), %d failed. See log for details.', $deletedFiles, $deletedBytes, $failedFiles));
             return Command::FAILURE;
         }
 
-        $io->success(sprintf('Deleted %d processed file(s).', $deleted));
+        $io->success(sprintf('Deleted %d processed file(s), %s freed.', $deletedFiles, $deletedBytes));
         return Command::SUCCESS;
     }
 

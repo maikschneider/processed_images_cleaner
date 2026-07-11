@@ -11,7 +11,7 @@ use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
 use TYPO3\CMS\Core\Resource\FileType;
-use TYPO3\CMS\Core\Resource\ProcessedFileRepository;
+use TYPO3\CMS\Core\Resource\ProcessedFile;
 
 /**
  * Finds and deletes sys_file_processedfile records matching a CleanupCriteria.
@@ -22,7 +22,6 @@ final readonly class ProcessedFileCleanupService
 
     public function __construct(
         private ConnectionPool $connectionPool,
-        private ProcessedFileRepository $processedFileRepository,
         private ConfigurationMatcher $configurationMatcher,
         private LoggerInterface $logger,
     ) {}
@@ -45,9 +44,9 @@ final readonly class ProcessedFileCleanupService
         ));
     }
 
-    public function delete(int $uid): void
+    public function delete(ProcessedFile $processedFile): void
     {
-        $processedFile = $this->processedFileRepository->findByUid($uid);
+        $uid = $processedFile->getUid();
         $processedFile->getStorage()->setEvaluatePermissions(false);
         $processedFile->delete(true);
 
