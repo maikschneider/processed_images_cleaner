@@ -33,7 +33,7 @@
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"DERHANSEN\\SfEventMgt\\Tests\\": "../Tests"
+			"Derhansen\\ProcessedImagesCleaner\\Tests\\": "../../Tests"
 		}
 	}
 }

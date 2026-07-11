@@ -1,0 +1,14 @@
+"sys_file"
+,"uid","pid","storage","type","identifier","name"
+,1,0,1,2,"/user_upload/image1.jpg","image1.jpg"
+,2,0,1,2,"/user_upload/sub/image2.jpg","image2.jpg"
+,3,0,2,2,"/user_upload/image3.jpg","image3.jpg"
+,4,0,1,4,"/user_upload/notes.txt","notes.txt"
+"sys_file_processedfile"
+,"uid","storage","original","identifier","name","configuration","width","height"
+,10,1,1,"/_processed_/csm_image1_10.jpg","csm_image1_10.jpg","a:2:{s:5:""width"";i:200;s:6:""height"";i:100;}",200,100
+,11,1,1,"/_processed_/csm_image1_11.jpg","csm_image1_11.jpg","a:1:{s:5:""width"";s:4:""800m"";}",800,0
+,12,1,2,"/_processed_/csm_image2_12.jpg","csm_image2_12.jpg","a:2:{s:5:""width"";i:200;s:4:""crop"";s:14:""{""default"":[]}"";}",200,0
+,13,2,3,"/_processed_/csm_image3_13.jpg","csm_image3_13.jpg","a:1:{s:5:""width"";i:200;}",200,0
+,14,1,4,"/_processed_/csm_notes_14.jpg","csm_notes_14.jpg","a:1:{s:5:""width"";i:200;}",200,0
+,15,1,1,"","","",0,0

@@ -1,0 +1,6 @@
+"sys_file"
+,"uid","pid","storage","type","identifier","name","extension","mime_type","sha1","size","missing"
+,1,0,1,2,"/user_upload/image1.jpg","image1.jpg","jpg","image/jpeg","1a2b3c",8,0
+"sys_file_processedfile"
+,"uid","storage","original","identifier","name","configuration","configurationsha1","task_type","checksum","width","height"
+,10,1,1,"/_processed_/1/csm_image1_hash.jpg","csm_image1_hash.jpg","a:2:{s:5:""width"";i:200;s:6:""height"";i:100;}","aaa111","Image.CropScaleMask","bbb222",200,100
