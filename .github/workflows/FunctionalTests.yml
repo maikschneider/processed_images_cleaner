@@ -32,7 +32,7 @@ jobs:
 
       - name: Validate composer.json
         run: |
-          cd .Build
+          cd .Build/${{ matrix.typo3 }}/
           composer validate
 
       - name: Cache dependencies
