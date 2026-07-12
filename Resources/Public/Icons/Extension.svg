@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Processed Images Cleaner">
+  <rect width="64" height="64" fill="#38bdf8"/>
+  <g fill="#ffffff">
+    <!-- Large sparkle -->
+    <path d="M25 9Q25 28 44 28Q25 28 25 47Q25 28 6 28Q25 28 25 9Z"/>
+    <!-- Medium sparkle -->
+    <path d="M47 36Q47 47 58 47Q47 47 47 58Q47 47 36 47Q47 47 47 36Z"/>
+    <!-- Small sparkle -->
+    <path d="M48 10Q48 17 55 17Q48 17 48 24Q48 17 41 17Q48 17 48 10Z"/>
+  </g>
+</svg>
