@@ -61,7 +61,7 @@ final class ProcessedImagesCleanupCommand extends Command
 
         $dryRun = $input->getOption('dry-run');
         if ($dryRun) {
-            $io->writeln('No files will be deleted. dry-run enabled.');
+            $io->info('No files will be deleted. dry-run enabled.');
         }
 
         $matches = $this->cleanupService->findDemanded($demand);
