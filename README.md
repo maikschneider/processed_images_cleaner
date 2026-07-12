@@ -157,6 +157,32 @@ A typical, safe workflow is to first run the command with `--dry-run` to review 
 files and the amount of disk space that would be freed, and then run the same command again
 without `--dry-run` to actually delete the files.
 
+## Scheduling in the TYPO3 backend
+
+The command can be scheduled as a recurring task via the TYPO3 Scheduler
+(*"Execute console commands"* task, task type `cleanup:processedimages`). All options are
+available in the task configuration form.
+
+Repeatable options (`--file-uid`, `--identifier`, `--config`) work in the backend as well –
+they are just entered differently than on the command line. Since the Scheduler cannot render
+a repeatable input field, TYPO3 core maps array options to a **single comma-separated value
+field**. Enable the option's checkbox and enter the multiple values separated by commas:
+
+| Option         | On the CLI                          | In the Scheduler task field         |
+|----------------|-------------------------------------|-------------------------------------|
+| `--file-uid`   | `-u 42 -u 43`                       | `42,43`                             |
+| `--identifier` | `-i /a/one.jpg -i /a/two.jpg`       | `/a/one.jpg,/a/two.jpg`             |
+| `--config`     | `-c width=1000 -c cropVariant=default` | `width=1000,cropVariant=default` |
+
+Please note:
+
+* A configuration value must not itself contain a comma – the comma is the fixed separator,
+  and there is no way to escape it.
+* Do not leave a trailing comma (e.g. `width=1000,`). It produces an empty item that the
+  command rejects with an *"Invalid --config value"* error.
+
+This is standard TYPO3 core behaviour and not a limitation of this extension.
+
 ## How it works
 
 * Only processed files whose **original file is an image** are considered.
