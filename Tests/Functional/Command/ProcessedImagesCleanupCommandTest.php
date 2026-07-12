@@ -21,7 +21,6 @@ final class ProcessedImagesCleanupCommandTest extends FunctionalTestCase
 {
     protected array $testExtensionsToLoad = ['typo3conf/ext/processed_images_cleaner'];
     private CommandTester $commandTester;
-    private const PROCESSED_IDENTIFIER = '/_processed_/1/csm_image1_hash.jpg';
 
     public function setUp(): void
     {
@@ -79,42 +78,74 @@ final class ProcessedImagesCleanupCommandTest extends FunctionalTestCase
     #[Test]
     public function dryRunReportsMatchesButDoesNotDeleteFiles(): void
     {
-        $this->setUpFalScenario();
+        $this->setUpFalScenario(['csm_image1_hash.jpg' => 'PROCESSED'], 'processed_file_deletion.csv');
 
         $this->commandTester->execute(['--file-uid' => ['1'], '--dry-run' => true]);
 
         $display = $this->commandTester->getDisplay();
         self::assertSame(Command::SUCCESS, $this->commandTester->getStatusCode());
         self::assertStringContainsString('dry-run enabled', $display);
-        self::assertStringContainsString('Dry-run: 1 processed file(s) match', $display);
+        self::assertStringContainsString('Dry-run: 1 processed file(s) selected, 1 would be deleted', $display);
 
         // Neither the database record nor the physical file must be removed
         $this->assertCSVDataSet(__DIR__ . '/../Fixtures/processed_file_deletion.csv');
-        self::assertFileExists($this->getProcessedFilePath(), 'Physical processed file was removed during dry-run');
+        self::assertFileExists($this->getProcessedFilePathByName('csm_image1_hash.jpg'), 'Physical processed file was removed during dry-run');
     }
 
     #[Test]
     public function withoutDryRunMatchedProcessedFilesAreDeleted(): void
     {
-        $this->setUpFalScenario();
+        $this->setUpFalScenario(['csm_image1_hash.jpg' => 'PROCESSED'], 'processed_file_deletion.csv');
 
         $this->commandTester->execute(['--file-uid' => ['1']]);
 
         $display = $this->commandTester->getDisplay();
         self::assertSame(Command::SUCCESS, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Deleted 1 processed file(s)', $display);
+        self::assertStringContainsString('1 processed file(s) selected, 1 deleted', $display);
 
         // The processed file record is gone, the original sys_file remains
         $this->assertCSVDataSet(__DIR__ . '/../Fixtures/TestResults/processed_file_deleted.csv');
-        self::assertFileDoesNotExist($this->getProcessedFilePath(), 'Physical processed file was not removed');
+        self::assertFileDoesNotExist($this->getProcessedFilePathByName('csm_image1_hash.jpg'), 'Physical processed file was not removed');
+    }
+
+    #[Test]
+    public function nonIntegerLimitOptionShowsErrorAndReturnsInvalid(): void
+    {
+        $this->commandTester->execute(['--file-uid' => ['1'], '--limit' => 'notAnInteger']);
+
+        self::assertSame(Command::INVALID, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Option --limit must be a positive integer', $this->commandTester->getDisplay());
+    }
+
+    #[Test]
+    public function limitCapsTheNumberOfDeletedFilesButReportsTheFullSelection(): void
+    {
+        $this->setUpFalScenario(
+            ['csm_image1_hash10.jpg' => 'PROCESSED10', 'csm_image1_hash11.jpg' => 'PROCESSED11'],
+            'processed_files_limit.csv'
+        );
+
+        $this->commandTester->execute(['--file-uid' => ['1'], '--limit' => '1']);
+
+        $display = $this->commandTester->getDisplay();
+        self::assertSame(Command::SUCCESS, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('a limit of 1 is applied', $display);
+        self::assertStringContainsString('2 processed file(s) selected, 1 deleted', $display);
+
+        // Files are processed ordered by uid, so the lower uid (10) is deleted and uid 11 remains
+        self::assertFileDoesNotExist($this->getProcessedFilePathByName('csm_image1_hash10.jpg'), 'First processed file was not removed');
+        self::assertFileExists($this->getProcessedFilePathByName('csm_image1_hash11.jpg'), 'Second processed file was removed despite --limit=1');
     }
 
     /**
-     * Creates a default local storage plus the physical original and processed files, then imports the
-     * matching sys_file / sys_file_processedfile records so the command can resolve and delete a real
-     * processed file.
+     * Creates a default local storage plus the physical original and the given processed files, then imports
+     * the matching sys_file / sys_file_processedfile records so the command can resolve and delete real
+     * processed files.
+     *
+     * @param array<string, string> $processedFiles Map of processed file name (within /_processed_/1/) to its content
+     * @param string $csvFixture File name of the fixture (within Tests/Functional/Fixtures/) to import
      */
-    private function setUpFalScenario(): void
+    private function setUpFalScenario(array $processedFiles, string $csvFixture): void
     {
         GeneralUtility::makeInstance(StorageRepository::class)
             ->createLocalStorage('Test Storage', 'fileadmin/', 'relative', 'Functional test storage', true);
@@ -123,13 +154,15 @@ final class ProcessedImagesCleanupCommandTest extends FunctionalTestCase
         GeneralUtility::mkdir_deep($fileadminPath . '/user_upload/');
         GeneralUtility::mkdir_deep($fileadminPath . '/_processed_/1/');
         file_put_contents($fileadminPath . '/user_upload/image1.jpg', 'ORIGINAL');
-        file_put_contents($this->getProcessedFilePath(), 'PROCESSED');
+        foreach ($processedFiles as $name => $content) {
+            file_put_contents($this->getProcessedFilePathByName($name), $content);
+        }
 
-        $this->importCSVDataSet(__DIR__ . '/../Fixtures/processed_file_deletion.csv');
+        $this->importCSVDataSet(__DIR__ . '/../Fixtures/' . $csvFixture);
     }
 
-    private function getProcessedFilePath(): string
+    private function getProcessedFilePathByName(string $name): string
     {
-        return $this->instancePath . '/fileadmin' . self::PROCESSED_IDENTIFIER;
+        return $this->instancePath . '/fileadmin/_processed_/1/' . $name;
     }
 }

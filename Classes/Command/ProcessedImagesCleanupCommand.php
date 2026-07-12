@@ -39,7 +39,8 @@ final class ProcessedImagesCleanupCommand extends Command
             ->addOption('folder', 'f', InputOption::VALUE_OPTIONAL, 'Folder identifier within the storage, e.g. "user_upload/"')
             ->addOption('file-uid', 'u', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'UID of an original sys_file (repeatable)')
             ->addOption('identifier', 'i', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Full original file identifier incl. path, e.g. "/user_upload/foo/bar/image.jpg" (repeatable)')
-            ->addOption('config', 'c', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Configuration equality filter "key=value" (repeatable), e.g. -c width=1000 -c maxWidth=1800 -c cropVariant=default. Numeric values also match TypoScript modifiers ("800" matches "800m"); use "key=null" for unset values.');
+            ->addOption('config', 'c', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Configuration equality filter "key=value" (repeatable), e.g. -c width=1000 -c maxWidth=1800 -c cropVariant=default. Numeric values also match TypoScript modifiers ("800" matches "800m"); use "key=null" for unset values.')
+            ->addOption('limit', 'l', InputOption::VALUE_OPTIONAL, 'Maximum number of processed files to delete. Files are processed ordered by uid. If omitted, all matching files are deleted.');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -49,6 +50,7 @@ final class ProcessedImagesCleanupCommand extends Command
 
         try {
             $demand = $this->createDemand($input);
+            $limit = $this->limitOption($input);
         } catch (\InvalidArgumentException $e) {
             $io->error($e->getMessage());
             return Command::INVALID;
@@ -72,6 +74,18 @@ final class ProcessedImagesCleanupCommand extends Command
             return Command::SUCCESS;
         }
 
+        if ($limit !== null && $limit < $total) {
+            $matches = array_slice($matches, 0, $limit);
+            $io->note(sprintf(
+                '%d processed file(s) match, but a limit of %d is applied. Only the first %d (ordered by uid) will be %s.',
+                $total,
+                $limit,
+                $limit,
+                $dryRun ? 'reported' : 'deleted'
+            ));
+        }
+
+        $selected = count($matches);
         $deletedFiles = 0;
         $failedFiles = 0;
         $totalBytes = 0;
@@ -99,16 +113,16 @@ final class ProcessedImagesCleanupCommand extends Command
 
         $deletedBytes = GeneralUtility::formatSize($totalBytes, self::FORMAT_LABELS);
         if ($dryRun) {
-            $io->success(sprintf('Dry-run: %d processed file(s) match, %s would be freed.', $total, $deletedBytes));
+            $io->success(sprintf('Dry-run: %d processed file(s) selected, %d would be deleted, %s would be freed.', $total, $selected, $deletedBytes));
             return Command::SUCCESS;
         }
 
         if ($failedFiles > 0) {
-            $io->warning(sprintf('Deleted %d processed file(s) (%s freed), %d failed. See log for details.', $deletedFiles, $deletedBytes, $failedFiles));
+            $io->warning(sprintf('%d processed file(s) selected, %d deleted (%s freed), %d failed. See log for details.', $total, $deletedFiles, $deletedBytes, $failedFiles));
             return Command::FAILURE;
         }
 
-        $io->success(sprintf('Deleted %d processed file(s), %s freed.', $deletedFiles, $deletedBytes));
+        $io->success(sprintf('%d processed file(s) selected, %d deleted, %s freed.', $total, $deletedFiles, $deletedBytes));
         return Command::SUCCESS;
     }
 
@@ -172,6 +186,19 @@ final class ProcessedImagesCleanupCommand extends Command
         }
 
         return $values;
+    }
+
+    private function limitOption(InputInterface $input): ?int
+    {
+        $value = $input->getOption('limit');
+        if ($value === null) {
+            return null;
+        }
+        if (!MathUtility::canBeInterpretedAsInteger($value) || (int)$value < 1) {
+            throw new \InvalidArgumentException(sprintf('Option --limit must be a positive integer, "%s" given.', $value));
+        }
+
+        return (int)$value;
     }
 
     private function stringOption(InputInterface $input, string $name): ?string

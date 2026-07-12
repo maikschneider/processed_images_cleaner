@@ -86,6 +86,7 @@ In a classic (non-Composer) installation use:
 | `--file-uid`   | `-u`     | yes        | UID of an original `sys_file` record.                                                        |
 | `--identifier` | `-i`     | yes        | Full original file identifier incl. path, e.g. `/user_upload/foo/bar/image.jpg`.             |
 | `--config`     | `-c`     | yes        | Processing configuration filter as `key=value`, e.g. `-c width=1000 -c cropVariant=default`. |
+| `--limit`      | `-l`     | no         | Maximum number of processed files to delete (positive integer). Files are processed ordered by uid. |
 
 **File filters** (`--storage`, `--folder`, `--file-uid`, `--identifier`) narrow the database
 query based on the *original* file. **Configuration filters** (`--config`) are evaluated per
@@ -152,6 +153,17 @@ TypoScript modifiers `800m` (max) or `800c` (crop-scale).
 ```bash
 ./vendor/bin/typo3 cleanup:processedimages -f "user_upload/campaigns/" -c cropVariant=square --dry-run
 ```
+
+**Limit how many files are deleted per run:**
+
+```bash
+./vendor/bin/typo3 cleanup:processedimages --storage=1 --limit=500
+```
+
+All matching files are still counted and reported as *selected*, but only the first `--limit`
+files (ordered by uid) are actually deleted. This is useful to spread a large cleanup over
+several runs. The final summary shows both figures, e.g.
+`1234 processed file(s) selected, 500 deleted, 42.0 M freed.`
 
 A typical, safe workflow is to first run the command with `--dry-run` to review the matched
 files and the amount of disk space that would be freed, and then run the same command again
