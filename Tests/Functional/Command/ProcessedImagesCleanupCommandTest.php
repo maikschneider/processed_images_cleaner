@@ -30,6 +30,7 @@ final class ProcessedImagesCleanupCommandTest extends FunctionalTestCase
             new ProcessedFileCleanupService(
                 GeneralUtility::makeInstance(ConnectionPool::class),
                 new ConfigurationMatcher(),
+                GeneralUtility::makeInstance(StorageRepository::class),
                 new NullLogger(),
             ),
             GeneralUtility::makeInstance(ProcessedFileRepository::class),
@@ -85,7 +86,8 @@ final class ProcessedImagesCleanupCommandTest extends FunctionalTestCase
         $display = $this->commandTester->getDisplay();
         self::assertSame(Command::SUCCESS, $this->commandTester->getStatusCode());
         self::assertStringContainsString('dry-run enabled', $display);
-        self::assertStringContainsString('Dry-run: 1 processed file(s) selected, 1 would be deleted', $display);
+        self::assertStringContainsString('[uid: 10, size: 9]', $display);
+        self::assertStringContainsString('Dry-run: 1 processed file(s) selected, 1 would be deleted, 9 would be', $display);
 
         // Neither the database record nor the physical file must be removed
         $this->assertCSVDataSet(__DIR__ . '/../Fixtures/processed_file_deletion.csv');
@@ -101,11 +103,54 @@ final class ProcessedImagesCleanupCommandTest extends FunctionalTestCase
 
         $display = $this->commandTester->getDisplay();
         self::assertSame(Command::SUCCESS, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('1 processed file(s) selected, 1 deleted', $display);
+        self::assertStringContainsString('1 processed file(s) selected, 1 deleted, 9 freed.', $display);
 
         // The processed file record is gone, the original sys_file remains
         $this->assertCSVDataSet(__DIR__ . '/../Fixtures/TestResults/processed_file_deleted.csv');
         self::assertFileDoesNotExist($this->getProcessedFilePathByName('csm_image1_hash.jpg'), 'Physical processed file was not removed');
+    }
+
+    #[Test]
+    public function missingPhysicalProcessedFileIsReportedWithSizeZero(): void
+    {
+        // Only the database records are imported, the physical processed file does not exist
+        $this->setUpFalScenario([], 'processed_file_deletion.csv');
+
+        $this->commandTester->execute(['--file-uid' => ['1'], '--dry-run' => true]);
+
+        $display = $this->commandTester->getDisplay();
+        self::assertSame(Command::SUCCESS, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('[uid: 10, size: 0]', $display);
+        self::assertStringContainsString('Dry-run: 1 processed file(s) selected, 1 would be deleted, 0 would be', $display);
+    }
+
+    #[Test]
+    public function processedFileRecordIsRemovedWhenThePhysicalFileIsAlreadyGone(): void
+    {
+        // Only the database records are imported, the physical processed file does not exist
+        $this->setUpFalScenario([], 'processed_file_deletion.csv');
+
+        $this->commandTester->execute(['--file-uid' => ['1']]);
+
+        $display = $this->commandTester->getDisplay();
+        self::assertSame(Command::SUCCESS, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('1 processed file(s) selected, 1 deleted, 0 freed.', $display);
+        $this->assertCSVDataSet(__DIR__ . '/../Fixtures/TestResults/processed_file_deleted.csv');
+    }
+
+    #[Test]
+    public function processedFilesUsingTheOriginalFileAreSkipped(): void
+    {
+        $this->setUpFalScenario([], 'processed_file_uses_original.csv');
+
+        $this->commandTester->execute(['--file-uid' => ['1']]);
+
+        $display = $this->commandTester->getDisplay();
+        self::assertSame(Command::SUCCESS, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('1 processed file(s) selected, 0 deleted, 0 freed.', $display);
+
+        // The original file must never be touched
+        self::assertFileExists($this->instancePath . '/fileadmin/user_upload/image1.jpg');
     }
 
     #[Test]
@@ -130,7 +175,8 @@ final class ProcessedImagesCleanupCommandTest extends FunctionalTestCase
         $display = $this->commandTester->getDisplay();
         self::assertSame(Command::SUCCESS, $this->commandTester->getStatusCode());
         self::assertStringContainsString('a limit of 1 is applied', $display);
-        self::assertStringContainsString('2 processed file(s) selected, 1 deleted', $display);
+        // Only the size of the deleted file (11 bytes) is reported as freed
+        self::assertStringContainsString('2 processed file(s) selected, 1 deleted, 11 freed.', $display);
 
         // Files are processed ordered by uid, so the lower uid (10) is deleted and uid 11 remains
         self::assertFileDoesNotExist($this->getProcessedFilePathByName('csm_image1_hash10.jpg'), 'First processed file was not removed');

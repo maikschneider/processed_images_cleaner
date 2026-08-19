@@ -10,6 +10,7 @@ use Derhansen\ProcessedImagesCleaner\Service\ProcessedFileCleanupService;
 use PHPUnit\Framework\Attributes\Test;
 use Psr\Log\NullLogger;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Resource\StorageRepository;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
@@ -25,6 +26,7 @@ final class ProcessedFileCleanupServiceTest extends FunctionalTestCase
         $this->subject = new ProcessedFileCleanupService(
             GeneralUtility::makeInstance(ConnectionPool::class),
             new ConfigurationMatcher(),
+            GeneralUtility::makeInstance(StorageRepository::class),
             new NullLogger(),
         );
 
@@ -100,6 +102,112 @@ final class ProcessedFileCleanupServiceTest extends FunctionalTestCase
         $result = $this->subject->findDemanded(new CleanupDemand(configuration: ['height' => 'null']));
 
         self::assertSame([11, 12, 13], $this->getUids($result));
+    }
+
+    #[Test]
+    public function getProcessedFileSizeReturnsSizeOfPhysicalFileInRelativeLocalStorage(): void
+    {
+        $storageUid = $this->createLocalStorage('fileadmin/', 'relative');
+        $this->createPhysicalFile('fileadmin/_processed_/1/csm_image1_hash.jpg', 'PROCESSED');
+
+        $size = $this->subject->getProcessedFileSize([
+            'storage' => $storageUid,
+            'identifier' => '/_processed_/1/csm_image1_hash.jpg',
+        ]);
+
+        self::assertSame(9, $size);
+    }
+
+    #[Test]
+    public function getProcessedFileSizeReturnsSizeOfPhysicalFileInAbsoluteLocalStorage(): void
+    {
+        $storageUid = $this->createLocalStorage($this->instancePath . '/fileadmin/', 'absolute');
+        $this->createPhysicalFile('fileadmin/_processed_/1/csm_image1_hash.jpg', 'PROCESSED FILE');
+
+        $size = $this->subject->getProcessedFileSize([
+            'storage' => $storageUid,
+            'identifier' => '/_processed_/1/csm_image1_hash.jpg',
+        ]);
+
+        self::assertSame(14, $size);
+    }
+
+    #[Test]
+    public function getProcessedFileSizeReturnsSizeOfPhysicalFileInFallbackStorage(): void
+    {
+        // Storage 0 is the TYPO3 fallback storage, its identifiers are relative to the public path
+        $this->createPhysicalFile('typo3temp/assets/_processed_/1/csm_image1_hash.jpg', 'PROCESSED');
+
+        $size = $this->subject->getProcessedFileSize([
+            'storage' => 0,
+            'identifier' => '/typo3temp/assets/_processed_/1/csm_image1_hash.jpg',
+        ]);
+
+        self::assertSame(9, $size);
+    }
+
+    #[Test]
+    public function getProcessedFileSizeReturnsZeroWhenPhysicalFileDoesNotExist(): void
+    {
+        $storageUid = $this->createLocalStorage('fileadmin/', 'relative');
+
+        $size = $this->subject->getProcessedFileSize([
+            'storage' => $storageUid,
+            'identifier' => '/_processed_/1/csm_image1_gone.jpg',
+        ]);
+
+        self::assertSame(0, $size);
+    }
+
+    #[Test]
+    public function getProcessedFileSizeReturnsZeroForUnknownStorage(): void
+    {
+        $size = $this->subject->getProcessedFileSize([
+            'storage' => 99,
+            'identifier' => '/_processed_/1/csm_image1_hash.jpg',
+        ]);
+
+        self::assertSame(0, $size);
+    }
+
+    #[Test]
+    public function getProcessedFileSizeReturnsZeroForEmptyIdentifier(): void
+    {
+        $storageUid = $this->createLocalStorage('fileadmin/', 'relative');
+
+        self::assertSame(0, $this->subject->getProcessedFileSize(['storage' => $storageUid, 'identifier' => '']));
+    }
+
+    #[Test]
+    public function getProcessedFileSizeReturnsZeroForStorageWithUnknownDriver(): void
+    {
+        $connection = $this->getConnectionPool()->getConnectionForTable('sys_file_storage');
+        $connection->insert(
+            'sys_file_storage',
+            ['pid' => 0, 'name' => 'Remote storage', 'driver' => 'NonExistingDriver', 'configuration' => '', 'is_online' => 1]
+        );
+
+        $size = $this->subject->getProcessedFileSize([
+            'storage' => (int)$connection->lastInsertId(),
+            'identifier' => '/_processed_/1/csm_image1_hash.jpg',
+        ]);
+
+        self::assertSame(0, $size);
+    }
+
+    private function createLocalStorage(string $basePath, string $pathType): int
+    {
+        GeneralUtility::mkdir_deep($pathType === 'relative' ? $this->instancePath . '/' . $basePath : $basePath);
+
+        return GeneralUtility::makeInstance(StorageRepository::class)
+            ->createLocalStorage('Test Storage', $basePath, $pathType, 'Functional test storage', true);
+    }
+
+    private function createPhysicalFile(string $relativePath, string $content): void
+    {
+        $absolutePath = $this->instancePath . '/' . $relativePath;
+        GeneralUtility::mkdir_deep(dirname($absolutePath));
+        file_put_contents($absolutePath, $content);
     }
 
     /**

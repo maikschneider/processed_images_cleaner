@@ -91,7 +91,13 @@ final class ProcessedImagesCleanupCommand extends Command
         $totalBytes = 0;
         foreach ($matches as $row) {
             $processedFile = $this->processedFileRepository->findByUid((int)$row['uid']);
-            $processedFileSize = $processedFile->exists() ? $processedFile->getSize() : 0;
+
+            // Rows pointing to the original file have no own physical file, so there is nothing to clean up
+            if ($processedFile->usesOriginalFile()) {
+                continue;
+            }
+
+            $processedFileSize = $this->cleanupService->getProcessedFileSize($row);
             $totalBytes += $processedFileSize;
 
             if (!$dryRun) {
@@ -105,7 +111,12 @@ final class ProcessedImagesCleanupCommand extends Command
             }
 
             $io->writeln(
-                sprintf('Deleted processed file "%s" [uid: %d, size: %s]', $row['identifier'], $row['uid'],  GeneralUtility::formatSize($processedFileSize, self::FORMAT_LABELS))
+                sprintf(
+                    'Deleted processed file "%s" [uid: %d, size: %s]',
+                    $row['identifier'],
+                    $row['uid'],
+                    GeneralUtility::formatSize($processedFileSize, self::FORMAT_LABELS)
+                )
             );
         }
 

@@ -7,23 +7,33 @@ namespace Derhansen\ProcessedImagesCleaner\Service;
 use Derhansen\ProcessedImagesCleaner\Dto\CleanupDemand;
 use Doctrine\DBAL\ArrayParameterType;
 use Psr\Log\LoggerInterface;
+use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
 use TYPO3\CMS\Core\Resource\FileType;
 use TYPO3\CMS\Core\Resource\ProcessedFile;
+use TYPO3\CMS\Core\Resource\StorageRepository;
 
 /**
  * Finds and deletes sys_file_processedfile records matching a CleanupCriteria.
  */
-final readonly class ProcessedFileCleanupService
+final class ProcessedFileCleanupService
 {
     private const TABLE = 'sys_file_processedfile';
 
+    /**
+     * Resolved absolute base paths per storage uid. Null means "not resolvable".
+     *
+     * @var array<int, string|null>
+     */
+    private array $storageBasePaths = [];
+
     public function __construct(
-        private ConnectionPool $connectionPool,
-        private ConfigurationMatcher $configurationMatcher,
-        private LoggerInterface $logger,
+        private readonly ConnectionPool $connectionPool,
+        private readonly ConfigurationMatcher $configurationMatcher,
+        private readonly StorageRepository $storageRepository,
+        private readonly LoggerInterface $logger,
     ) {}
 
     /**
@@ -44,6 +54,31 @@ final readonly class ProcessedFileCleanupService
         ));
     }
 
+    /**
+     * Returns the size in bytes of the physical file belonging to the given processed file row. If the file
+     * can not be located, 0 is returned.
+     *
+     * Note: The size is determined with plain filesystem functions instead of the TYPO3 FAL API on purpose,
+     * since asking FAL for the size of a processed file is very slow when the physical file is not available.
+     */
+    public function getProcessedFileSize(array $row): int
+    {
+        $identifier = ltrim((string)($row['identifier'] ?? ''), '/');
+        $basePath = $this->getStorageBasePath((int)($row['storage'] ?? 0));
+        if ($identifier === '' || $basePath === null) {
+            return 0;
+        }
+
+        $absolutePath = $basePath . '/' . $identifier;
+        if (!is_file($absolutePath)) {
+            return 0;
+        }
+
+        $size = @filesize($absolutePath);
+
+        return $size === false ? 0 : $size;
+    }
+
     public function delete(ProcessedFile $processedFile): void
     {
         $uid = $processedFile->getUid();
@@ -51,6 +86,50 @@ final readonly class ProcessedFileCleanupService
         $processedFile->delete(true);
 
         $this->logger->info('Deleted processed file with uid {uid}', ['uid' => $uid]);
+    }
+
+    /**
+     * Returns the absolute base path of the given storage. Results are cached, since usually a lot of
+     * processed files share the same storage.
+     */
+    private function getStorageBasePath(int $storageUid): ?string
+    {
+        if (!array_key_exists($storageUid, $this->storageBasePaths)) {
+            $this->storageBasePaths[$storageUid] = $this->resolveStorageBasePath($storageUid);
+        }
+
+        return $this->storageBasePaths[$storageUid];
+    }
+
+    /**
+     * Resolves the absolute base path of the given storage. Returns null, if the storage does not exist or
+     * is not located on the local filesystem.
+     */
+    private function resolveStorageBasePath(int $storageUid): ?string
+    {
+        try {
+            $storage = $this->storageRepository->findByUid($storageUid);
+        } catch (\Throwable) {
+            $storage = null;
+        }
+
+        $configuration = $storage?->getDriverType() === 'Local' ? $storage->getConfiguration() : [];
+        $basePath = rtrim((string)($configuration['basePath'] ?? ''), '/');
+        if ($basePath === '') {
+            $this->logger->warning(
+                'Could not resolve the base path of storage {storage}. File sizes of processed files in this storage are reported as 0.',
+                ['storage' => $storageUid]
+            );
+
+            return null;
+        }
+
+        // Same rule as in the TYPO3 LocalDriver: the base path is only relative to the public path when explicitly configured
+        if (($configuration['pathType'] ?? '') === 'relative') {
+            $basePath = rtrim(Environment::getPublicPath(), '/') . '/' . ltrim($basePath, '/');
+        }
+
+        return $basePath;
     }
 
     /**
