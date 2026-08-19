@@ -63,14 +63,11 @@ final class ProcessedFileCleanupService
      */
     public function getProcessedFileSize(array $row): int
     {
-        $identifier = ltrim((string)($row['identifier'] ?? ''), '/');
-        $basePath = $this->getStorageBasePath((int)($row['storage'] ?? 0));
-        if ($identifier === '' || $basePath === null) {
-            return 0;
-        }
-
-        $absolutePath = $basePath . '/' . $identifier;
-        if (!is_file($absolutePath)) {
+        $absolutePath = $this->resolveAbsolutePath(
+            (int)($row['storage'] ?? 0),
+            (string)($row['identifier'] ?? '')
+        );
+        if ($absolutePath === null || !is_file($absolutePath)) {
             return 0;
         }
 
@@ -79,13 +76,57 @@ final class ProcessedFileCleanupService
         return $size === false ? 0 : $size;
     }
 
-    public function delete(ProcessedFile $processedFile): void
+    /**
+     * Deletes the given processed file and its database record.
+     *
+     * Note: When the physical file does not exist any more, only the database record is removed instead of
+     * going through the TYPO3 FAL API, since deleting a processed file through FAL is very slow in that case.
+     * The record is removed exactly like TYPO3 itself does it in its FileDeletionAspect event listener.
+     */
+    public function delete(ProcessedFile $processedFile, int $processedFileSize): void
     {
         $uid = $processedFile->getUid();
+
+        // A size of 0 means the file is either missing or really empty, so the filesystem has the final say
+        if ($processedFileSize === 0 && !$this->physicalFileExists($processedFile)) {
+            $this->connectionPool->getConnectionForTable(self::TABLE)->delete(self::TABLE, ['uid' => $uid]);
+
+            $this->logger->info(
+                'Deleted processed file record with uid {uid}. The physical file did not exist.',
+                ['uid' => $uid]
+            );
+
+            return;
+        }
+
         $processedFile->getStorage()->setEvaluatePermissions(false);
         $processedFile->delete(true);
 
         $this->logger->info('Deleted processed file with uid {uid}', ['uid' => $uid]);
+    }
+
+    private function physicalFileExists(ProcessedFile $processedFile): bool
+    {
+        $absolutePath = $this->resolveAbsolutePath(
+            $processedFile->getStorage()->getUid(),
+            $processedFile->getIdentifier()
+        );
+
+        return $absolutePath !== null && is_file($absolutePath);
+    }
+
+    /**
+     * Returns the absolute path of the given storage/identifier combination or null, if it can not be resolved.
+     */
+    private function resolveAbsolutePath(int $storageUid, string $identifier): ?string
+    {
+        $identifier = ltrim($identifier, '/');
+        $basePath = $this->getStorageBasePath($storageUid);
+        if ($identifier === '' || $basePath === null) {
+            return null;
+        }
+
+        return $basePath . '/' . $identifier;
     }
 
     /**

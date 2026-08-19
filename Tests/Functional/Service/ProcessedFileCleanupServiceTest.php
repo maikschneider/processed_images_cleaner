@@ -9,7 +9,10 @@ use Derhansen\ProcessedImagesCleaner\Service\ConfigurationMatcher;
 use Derhansen\ProcessedImagesCleaner\Service\ProcessedFileCleanupService;
 use PHPUnit\Framework\Attributes\Test;
 use Psr\Log\NullLogger;
+use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Resource\ProcessedFile;
+use TYPO3\CMS\Core\Resource\ProcessedFileRepository;
 use TYPO3\CMS\Core\Resource\StorageRepository;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
@@ -193,6 +196,66 @@ final class ProcessedFileCleanupServiceTest extends FunctionalTestCase
         ]);
 
         self::assertSame(0, $size);
+    }
+
+    #[Test]
+    public function deleteRemovesTheDatabaseRecordAndThePhysicalFile(): void
+    {
+        $processedFile = $this->setUpProcessedFile('PROCESSED');
+
+        $this->subject->delete($processedFile, 9);
+
+        self::assertFileDoesNotExist($this->instancePath . '/fileadmin/_processed_/csm_image1_10.jpg');
+        self::assertSame(0, $this->countProcessedFileRecords(10));
+    }
+
+    #[Test]
+    public function deleteRemovesOnlyTheDatabaseRecordWhenThePhysicalFileIsMissing(): void
+    {
+        // The physical file is not created, so the fast path without the FAL API is used
+        $processedFile = $this->setUpProcessedFile(null);
+
+        $this->subject->delete($processedFile, 0);
+
+        self::assertSame(0, $this->countProcessedFileRecords(10));
+    }
+
+    #[Test]
+    public function deleteRemovesAnEmptyPhysicalFileDespiteTheReportedSizeOfZero(): void
+    {
+        $processedFile = $this->setUpProcessedFile('');
+
+        $this->subject->delete($processedFile, 0);
+
+        self::assertFileDoesNotExist($this->instancePath . '/fileadmin/_processed_/csm_image1_10.jpg');
+        self::assertSame(0, $this->countProcessedFileRecords(10));
+    }
+
+    /**
+     * Creates the storage and the physical original file for processed file 10 of the fixture and returns the
+     * matching ProcessedFile object. The physical processed file is only created if content is given.
+     */
+    private function setUpProcessedFile(?string $processedFileContent): ProcessedFile
+    {
+        $this->createLocalStorage('fileadmin/', 'relative');
+        $this->createPhysicalFile('fileadmin/user_upload/image1.jpg', 'ORIGINAL');
+        if ($processedFileContent !== null) {
+            $this->createPhysicalFile('fileadmin/_processed_/csm_image1_10.jpg', $processedFileContent);
+        }
+
+        return GeneralUtility::makeInstance(ProcessedFileRepository::class)->findByUid(10);
+    }
+
+    private function countProcessedFileRecords(int $uid): int
+    {
+        $queryBuilder = $this->getConnectionPool()->getQueryBuilderForTable('sys_file_processedfile');
+
+        return (int)$queryBuilder
+            ->count('uid')
+            ->from('sys_file_processedfile')
+            ->where($queryBuilder->expr()->eq('uid', $queryBuilder->createNamedParameter($uid, Connection::PARAM_INT)))
+            ->executeQuery()
+            ->fetchOne();
     }
 
     private function createLocalStorage(string $basePath, string $pathType): int

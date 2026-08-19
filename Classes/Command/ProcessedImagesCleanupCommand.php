@@ -102,7 +102,7 @@ final class ProcessedImagesCleanupCommand extends Command
 
             if (!$dryRun) {
                 try {
-                    $this->cleanupService->delete($processedFile);
+                    $this->cleanupService->delete($processedFile, $processedFileSize);
                     $deletedFiles++;
                 } catch (\Throwable $e) {
                     $failedFiles++;
